@@ -47,7 +47,7 @@ end
 --Set up AP
 setupAPMode();
 
-print("Start DoitRobo Control");
+print("Start CarNodeMCU_APMode Control");
 initGPIO();
 
 spdTargetA=1023;--target Speed
@@ -69,27 +69,51 @@ tmr.alarm(1, 200, 1, function()
 	end
 end)
 
-function processData(strMsg)
-	local msgLength = string.byte(strMsg, 1, 1) * 256 + string.byte(strMsg, 2, 2)
+function processData(strMsg, msgDataIDLength)
 	local msgID = string.byte(strMsg, 3, 3)
-	local msg = string.sub(strMsg, 4, msgLength-msgID)
+	local msg = string.sub(strMsg, 4, 4+msgDataIDLength-1)
+	local msgLen = string.len(msg)
 	print("msg:"..msg)
+	if "w" == msg then
+		gpio.write(3,gpio.HIGH)
+		gpio.write(4,gpio.HIGH)
+		stopFlag = false;
+	elseif "s" == msg then
+		gpio.write(3,gpio.LOW)
+		gpio.write(4,gpio.LOW)
+		stopFlag = false;
+	elseif "a" == msg then
+		gpio.write(3,gpio.LOW)
+		gpio.write(4,gpio.HIGH)
+		stopFlag = false;
+	elseif "d" == msg then
+		gpio.write(3,gpio.HIGH);
+		gpio.write(4,gpio.LOW);
+		stopFlag = false;
+	elseif "x" == msg then
+		pwm.setduty(1,0)
+		pwm.setduty(2,0)
+		stopFlag = true;
+	end
 end
 
 recvStr = ""
 --Setup tcp server at port 9003
 s=net.createServer(net.TCP,60);
 s:listen(9003,function(c) 
-    c:on("receive",function(c,d) 
-      print("TCPSrv:"..d)
+	print("listen")
+    c:on("receive",function(c,d)
 	  recvStr = recvStr..d
-	  local strLen = string.len(recvStr)
-	  if strLen > 2 then
-		local curMsgLength = string.byte(recvStr, 1, 1) * 256 + string.byte(recvStr, 2, 2)
-		if strLen > (curMsgLength+2) then
+	  local dStrLen = string.len(d)
+	  local recvStrLen = string.len(recvStr)
+	  if recvStrLen > 2 then
+		local curMsgLength0 = string.byte(recvStr, 1, 1) 
+		local curMsgLength1 = string.byte(recvStr, 2, 2)
+		local curMsgLength =  curMsgLength0 + curMsgLength1* 256
+		if recvStrLen >= (curMsgLength+2) then
 			-- now we get the whole package
-			processData(recvStr)
-			recvStr = string.sub(recvStr, 1, curMsgLength+2)
+			processData(recvStr, curMsgLength)
+			recvStr = string.sub(recvStr, curMsgLength+2, recvStrLen-(curMsgLength+2))
 		end
 	  end
 	  collectgarbage();
